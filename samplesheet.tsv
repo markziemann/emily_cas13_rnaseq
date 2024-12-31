@@ -1,0 +1,25 @@
+SampleGroup	SampleLabel
+S1	Rfx_DsRed_gRNA	Rfx_DsRed_gRNA_1
+S2	Rfx_DsRed_gRNA	Rfx_DsRed_gRNA_2
+S3	Rfx_DsRed_gRNA	Rfx_DsRed_gRNA_3
+S4	Rfx_NTC_gRNA	Rfx_NTC_gRNA_1
+S5	Rfx_NTC_gRNA	Rfx_NTC_gRNA_2
+S6	Rfx_NTC_gRNA	Rfx_NTC_gRNA_3
+S7	Rfx_Tfx_ctl	Rfx_Tfx_ctl_1
+S8	Rfx_Tfx_ctl	Rfx_Tfx_ctl_2
+S9	Rfx_Tfx_ctl	Rfx_Tfx_ctl_3
+S10	Rfx_NTfx_ctl	Rfx_NTfx_ctl_1
+S11	Rfx_NTfx_ctl	Rfx_NTfx_ctl_2
+S12	Rfx_NTfx_ctl	Rfx_NTfx_ctl_3
+S13	Hf_DsRed_gRNA	Hf_DsRed_gRNA_1
+S14	Hf_DsRed_gRNA	Hf_DsRed_gRNA_2
+S15	Hf_DsRed_gRNA	Hf_DsRed_gRNA_3
+S16	Hf_NTC_gRNA	Hf_NTC_gRNA_1
+S17	Hf_NTC_gRNA	Hf_NTC_gRNA_2
+S18	Hf_NTC_gRNA	Hf_NTC_gRNA_3
+S19	Hf_Tfx_ctl	Hf_Tfx_ctl_1
+S20	Hf_Tfx_ctl	Hf_Tfx_ctl_2
+S21	Hf_Tfx_ctl	Hf_Tfx_ctl_3
+S22	Hf_NTfx_ctl	Hf_NTfx_ctl_1
+S23	Hf_NTfx_ctl	Hf_NTfx_ctl_2
+S24	Hf_NTfx_ctl	Hf_NTfx_ctl_3

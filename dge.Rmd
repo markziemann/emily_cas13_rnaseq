@@ -1,0 +1,1184 @@
+---
+title: "Emily Crispr RNA-seq"
+author: "Mark Ziemann"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_width: 7
+    fig_height: 7
+theme: cosmo
+---
+
+Source: TBA
+
+## Introduction
+
+Here we analyse the effect of various CRISPR Cas13 constructs.
+
+There are two different Cas13 sequences used, the normal RfxCas13d (WT) and the high-fidelity
+HfCas13d.
+
+| Sample | Cas13 type | Sample type |
+| --- | --- | --- |
+| S1 | Rfx | DsRed gRNA |
+| S2 | Rfx | DsRed gRNA |
+| S3 | Rfx | DsRed gRNA |
+| S4 | Rfx | Non-targeting gRNA |
+| S5 | Rfx | Non-targeting gRNA |
+| S6 | Rfx | Non-targeting gRNA |
+| S7 | Rfx | Transfection control |
+| S8 | Rfx | Transfection control |
+| S9 | Rfx | Transfection control |
+| S10 | Rfx | Non-transfected control |
+| S11 | Rfx | Non-transfected control |
+| S12 | Rfx | Non-transfected control |
+| S13 | Hf | DsRed gRNA |
+| S14 | Hf | DsRed gRNA |
+| S15 | Hf | DsRed gRNA |
+| S16 | Hf | Non-targeting gRNA |
+| S17 | Hf | Non-targeting gRNA |
+| S18 | Hf | Non-targeting gRNA |
+| S19 | Hf | Transfection control |
+| S20 | Hf | Transfection control |
+| S21 | Hf | Transfection control |
+| S22 | Hf | Non-transfected control |
+| S23 | Hf | Non-transfected control |
+| S24 | Hf | Non-transfected control |
+
+They are similar except for a few bp.
+The divergent bp were replaced with N for mapping with kallisto.
+
+The goal is to understand the performance of each Cas, in terms of degree of knock-down and
+the degree of off-target degradation.
+
+## Methods
+
+Reads were mapped to chicken transcripts from ensembl version 113.
+
+Genes with mean counts > 10 are classified as detected.
+
+Differential expression is conducted with DESeq2.
+
+Pathway enrichment analysis is conducted with mitch.
+
+```{r,packages}
+
+suppressPackageStartupMessages({
+    library("zoo")
+    library("dplyr")
+    library("reshape2")
+    library("DESeq2")
+    library("gplots")
+    library("MASS")
+    library("mitch")
+    library("eulerr")
+    library("kableExtra")
+    library("beeswarm")
+    library("UpSetR")
+})
+
+```
+
+## Sample sheet
+
+```{r,ss1}
+
+ss <- read.table("samplesheet.tsv")
+ss <- ss[order(rownames(ss)),]
+ss
+
+```
+
+## Import gene ontology sets for pathway analysis later
+
+```{r,importgmt}
+
+go <- gmt_import("chicken_go_2024-11.gmt")
+
+```
+
+## Import gene table and read counts
+
+```{r,importdata1}
+
+gt <- read.table("ref/Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.113.tx2gene.tsv")
+head(gt)
+rownames(gt) <- gt$V1
+gt$gene <- paste(gt$V2,gt$V3)
+gt$V1 = gt$V2 = gt$V3 = NULL
+head(gt)
+
+# add cas13d and DsRed
+add <- data.frame(c("cas13d cas13d","DsRed DsRed"))
+rownames(add) <- c("cas13d","DsRed")
+colnames(add) <- "gene"
+gt2 <- as.data.frame(rbind(add,gt))
+head(gt2)
+
+tmp <- read.table("AGRF_CAGRF24100018-1_22VGYMLT3/3col.tsv.gz",header=F)
+tmp$V1 <-  sapply(strsplit(tmp$V1,"_"),"[[",1)
+x <- as.matrix(acast(tmp, V2~V1, value.var="V3", fun.aggregate = sum))
+rownames(x) <- sapply(strsplit( rownames(x) , "\\."),"[[",1)
+
+xm <- merge(x,gt2,by=0)
+rownames(xm) <- xm$Row.names
+xm$Row.names = NULL
+xmg <- aggregate(. ~ gene,xm,sum)
+rownames(xmg) <- xmg$gene
+
+rownames(xmg) <- xmg$gene
+xmg$gene = NULL
+xx <- round(xmg)
+head(xx)
+
+# reordering the columns
+rownames(ss) == colnames(xx)
+colnames(xx) <- ss$SampleLabel
+
+xx <- xx[,order(colnames(xx))]
+ss <- ss[order(ss$SampleLabel),]
+
+# write counts
+write.table(xx,"emily_counts.tsv",sep="\t",quote=FALSE)
+
+# add colour and shape info to ss
+ss$col <- c(rep("orange",12),rep("gray",12))
+ss$shape <- rep(c(rep(17,3),rep(15,3),rep(18,3),rep(19,3)),2)
+
+```
+
+## QC analysis
+
+Here I'll look at a few different quality control measures.
+
+```{r,qc1,fig.height=7,fig.width=7}
+
+par(mar=c(5,10,3,1))
+barplot(rev(colSums(xx)),horiz=TRUE,las=1,xlab="num reads")
+colSums(xx)
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+```
+
+## MDS plot
+
+Now check MDS clustering.
+
+```{r,mds1}
+
+mymds <- cmdscale(dist(t(xx)))
+
+XMIN=min(mymds[,1])*1.3
+XMAX=max(mymds[,1])*1.5
+
+plot(mymds, xlab="Coordinate 1", ylab="Coordinate 2",
+  type = "p",bty="n",pch=ss$shape, cex=4, col=ss$col,
+  xlim=c(XMIN,XMAX), main = "MDS plot")
+
+text(cmdscale(dist(t(xx))), labels=colnames(xx) )
+
+legend("topleft", inset=.02, title="Cas13 type",
+   c("Hf","Rfx"), fill=c("orange","gray"), horiz=TRUE, cex=1)
+
+legend("topright", inset=.02, title="Sample group",
+  c("DsRed_gRNA","NTC_gRNA","NTfx_ctl", "Tfx_ctl"),
+  pch=c(17,15,18,19) , col="black", horiz=FALSE, cex=1)
+
+```
+
+It looks like there is clustering in terms of the Cas construct used but not
+the sample groups.
+
+Let's take a closer look at the different Cas types.
+
+```{r,mds2}
+
+xrf <- xx[,grep("Rfx",colnames(xx))]
+xhf <- xx[,grep("Hf",colnames(xx))]
+
+srf <- ss[grep("Rfx",ss$SampleGroup),]
+shf <- ss[grep("Hf",ss$SampleGroup),]
+
+# Rfx Cas13d
+mymds <- cmdscale(dist(t(xrf)))
+
+XMIN=min(mymds[,1])*1.3
+XMAX=max(mymds[,1])*1.5
+
+plot(mymds, xlab="Coordinate 1", ylab="Coordinate 2",
+  type = "p",bty="n",pch=srf$shape, cex=4, col=srf$col,
+  xlim=c(XMIN,XMAX), main = "MDS plot: Rfx")
+
+text(cmdscale(dist(t(xrf))), labels=colnames(xrf) )
+
+legend("topleft", inset=.02, title="Sample group",
+  c("DsRed_gRNA","NTC_gRNA","NTfx_ctl", "Tfx_ctl"),
+  pch=c(17,15,18,19) , col="gray", horiz=FALSE, cex=1)
+
+# Hf Cas13d
+mymds <- cmdscale(dist(t(xhf)))
+
+XMIN=min(mymds[,1])*1.3
+XMAX=max(mymds[,1])*1.5
+
+plot(mymds, xlab="Coordinate 1", ylab="Coordinate 2",
+  type = "p",bty="n",pch=shf$shape, cex=4, col=shf$col,
+  xlim=c(XMIN,XMAX), main = "MDS plot: Rfx")
+
+text(cmdscale(dist(t(xhf))), labels=colnames(xhf) )
+
+legend("right", inset=.02, title="Sample group",
+  c("DsRed_gRNA","NTC_gRNA","NTfx_ctl", "Tfx_ctl"),
+  pch=c(17,15,18,19) , col="orange", horiz=FALSE, cex=1)
+
+```
+
+In the Hf experiment, non-transfected controls were clustered separately from the other
+samples.
+This was observed to a lesser extent in the Rfx samples.
+No other notable clustering was observed.
+
+## Correlation heatmap
+
+```{r,cor,fig.height=7,fig.width=7}
+
+mycor <- cor(xx)
+mycor[mycor == 1] <- NA
+
+heatmap.2(mycor,trace="n",main="Pearson correlation heatmap",mar=c(9,9))
+
+mycor %>% kbl(caption = "Pearson correlation coefficients") %>% kable_paper("hover", full_width = F)
+
+mycor <- cor(xx,method="spearman")
+mycor[mycor == 1] <- NA
+heatmap.2(mycor,trace="n",main="Spearman correlation heatmap",mar=c(9,9))
+
+mycor %>% kbl(caption = "Spearman correlation coefficients") %>% kable_paper("hover", full_width = F)
+
+# Rfx
+mycor <- cor(xrf)
+mycor[mycor == 1] <- NA
+heatmap.2(mycor,trace="n",main="Rfx Pearson Cor",mar=c(11,11))
+
+mycor <- cor(xrf,method="spearman")
+mycor[mycor == 1] <- NA
+heatmap.2(mycor,trace="n",main="Rfx Spearman Cor",mar=c(11,11))
+
+# Hf
+mycor <- cor(xhf)
+mycor[mycor == 1] <- NA
+heatmap.2(mycor,trace="n",main="Hf Pearson Cor",mar=c(11,11))
+
+mycor <- cor(xhf,method="spearman")
+mycor[mycor == 1] <- NA
+heatmap.2(mycor,trace="n",main="Hf Spearman Cor",mar=c(11,11))
+
+```
+
+## Now look specifically at the DsRed and Cas13 expression
+
+```{r,dsred_cas13d_1}
+
+rpm <- apply(xx,2, function(x) {x / sum(x) * 1e6 } )
+
+cas13 <- unlist(rpm[1,,drop=TRUE])
+dsred <- unlist(rpm[2,,drop=TRUE])
+
+par(mar=c(5,10,3,1))
+barplot(cas13,horiz=TRUE,las=1,xlab="Reads per million",main="Cas13d")
+barplot(dsred,horiz=TRUE,las=1,xlab="Reads per million",main="DsRed")
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+```
+
+There is a >1200 RPM for Cas13 in all these samples.
+DsRed was absent in NTfx samples.
+There was much less DsRed in targeting gDNA samples as compared to non-targeting controls
+and transfection controls.
+
+```{r,dsred_cas13d_2}
+
+## HF
+ds <- dsred[grep("Hf",names(dsred))]
+
+targeting_gRNA <- ds[grep("DsRed_gRNA",names(ds))]
+
+nontargeting_gRNA <- ds[grep("NTC_gRNA",names(ds))]
+
+dat <- list("Non-targeting gRNA"=nontargeting_gRNA,
+"Targeting gRNA"=targeting_gRNA)
+
+MAX=max(unlist(lapply(dat,max)))
+
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="DsRed expresssion (Hf)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+
+dmean <- unlist(lapply(dat,mean))
+reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
+mtext(paste("Reduction:",reduction,"%"))
+
+## RFX
+ds <- dsred[grep("Rfx",names(dsred))]
+
+targeting_gRNA <- ds[grep("DsRed_gRNA",names(ds))]
+
+nontargeting_gRNA <- ds[grep("NTC_gRNA",names(ds))]
+
+dat <- list("Non-targeting gRNA"=nontargeting_gRNA,
+"Targeting gRNA"=targeting_gRNA)
+
+MAX=max(unlist(lapply(dat,max)))
+
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="DsRed expresssion (Rfx)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+
+dmean <- unlist(lapply(dat,mean))
+reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
+mtext(paste("Reduction:",reduction,"%"))
+
+```
+
+# Analysis of differential gene expression
+
+## Plot functions
+
+```{r,plot_functions}
+
+maplot <- function(de,contrast_name) {
+  sig <-subset(de, padj < 0.05 )
+  up <-rownames(subset(de, padj < 0.05 & log2FoldChange > 0))
+  dn <-rownames(subset(de, padj < 0.05 & log2FoldChange < 0))
+  GENESUP <- length(up)
+  GENESDN <- length(dn)
+  DET=nrow(de)
+  SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down", DET, "detected")
+  ns <-subset(de, padj > 0.05 )
+  plot(log2(de$baseMean),de$log2FoldChange,
+       xlab="log2 basemean", ylab="log2 foldchange",
+       pch=19, cex=0.5, col="dark gray",
+       main=contrast_name, cex.main=1)
+  points(log2(sig$baseMean),sig$log2FoldChange,
+         pch=19, cex=0.5, col="red")
+  mtext(SUBHEADER,cex = 1)
+}
+
+make_volcano <- function(de,name) {
+    sig <- subset(de,padj<0.05)
+    N_SIG=nrow(sig)
+    N_UP=nrow(subset(sig,log2FoldChange>0))
+    N_DN=nrow(subset(sig,log2FoldChange<0))
+    DET=nrow(de)
+    HEADER=paste(N_SIG,"@5%FDR,", N_UP, "up", N_DN, "dn", DET, "detected")
+    plot(de$log2FoldChange,-log10(de$pval),cex=0.5,pch=19,col="darkgray",
+        main=name, xlab="log2 FC", ylab="-log10 pval", xlim=c(-6,6))
+    mtext(HEADER)
+    grid()
+    points(sig$log2FoldChange,-log10(sig$pval),cex=0.5,pch=19,col="red")
+}
+
+make_heatmap <- function(de,name,myss,mx,n=30){
+  colfunc <- colorRampPalette(c("blue", "white", "red"))
+  values <- myss$quickdash
+  f <- colorRamp(c("yellow", "orange"))
+  rr <- range(values)
+  svals <- (values-rr[1])/diff(rr)
+  colcols <- rgb(f(svals)/255)
+  mxn <- mx/rowSums(mx)*1000000
+  x <- mxn[which(rownames(mxn) %in% rownames(head(de,n))),]
+  heatmap.2(as.matrix(x),trace="none",col=colfunc(25),scale="row",
+    margins = c(7,20), cexRow=0.8, cexCol=1.0,
+    main=paste("Top ranked",n,"genes in",name) )
+}
+
+```
+
+## 1. Rfx_NTC_gRNA versus Rfx_DsRed_gRNA 
+
+```{r,dge1}
+
+ss1 <- subset(ss,SampleGroup=="Rfx_NTC_gRNA" | SampleGroup=="Rfx_DsRed_gRNA")
+ss1$trt <- factor(grepl("DsRed",ss1$SampleGroup))
+rownames(ss1) <- ss1$SampleLabel
+
+xx1 <- xx[,colnames(xx) %in% ss1$SampleLabel]
+xx1f <- xx1[rowMeans(xx1)>=10,]
+dim(xx1)
+dim(xx1f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx1f , colData = ss1, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by DsRed targeting in Rfx") %>%
+  kable_paper("hover", full_width = F)
+
+dge1 <- dge
+write.table(dge1,file="dge1.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge1,"Rfx: NTC gRNA vs DsRed gRNA")
+make_volcano(dge1,"Rfx: NTC gRNA vs DsRed gRNA")
+make_heatmap(dge1,"Rfx: NTC gRNA vs DsRed gRNA",ss1,xx1,n=30)
+
+# pathway
+dge1$gene <- sapply(strsplit(rownames(dge1)," "),"[[",2)
+m1 <- aggregate(stat ~ gene,dge1,mean)
+rownames(m1) <- m1$gene ; m1$gene <- NULL
+mres1 <- mitch_calc(m1, go, priority="effect",cores=8)
+
+head(mres1$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx: NTC gRNA vs DsRed gRNA") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres1$enrichment_result,file="mitch1.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres1$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx: NTC gRNA vs DsRed gRNA",xlab="ES")
+grid()
+
+```
+
+There are some off target effects caused by the DsRed targeting gRNA.
+
+## 2. Rfx_Tfx_ctl versus Rfx_NTC_gRNA 
+
+Now examining the effect of adding the NTC gRNA.
+
+```{r,dge2}
+
+ss2 <- subset(ss,SampleGroup=="Rfx_Tfx_ctl" | SampleGroup=="Rfx_NTC_gRNA")
+ss2$trt <- factor(grepl("NTC",ss2$SampleGroup))
+rownames(ss2) <- ss2$SampleLabel
+xx2 <- xx[,colnames(xx) %in% ss2$SampleLabel]
+xx2f <- xx2[rowMeans(xx2)>=10,]
+dim(xx2)
+dim(xx2f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx2f , colData = ss2, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by NTC gRNA compared to transfection control") %>%
+  kable_paper("hover", full_width = F)
+
+dge2 <- dge
+write.table(dge2,file="dge2.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge2,"Rfx: Tfx ctl vs NTC gRNA")
+make_volcano(dge2,"Rfx: Tfx ctl vs NTC gRNA")
+make_heatmap(dge2,"Rfx: Tfx ctl vs NTC gRNA",ss2,xx2,n=30)
+
+# pathway
+dge2$gene <- sapply(strsplit(rownames(dge2)," "),"[[",2)
+m2 <- aggregate(stat ~ gene,dge2,mean)
+rownames(m2) <- m2$gene ; m2$gene <- NULL
+mres2 <- mitch_calc(m2, go, priority="effect",cores=8)
+
+head(mres2$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx: Tfx ctl vs NTC gRNA") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres2$enrichment_result,file="mitch2.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres2$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx: Tfx ctl vs NTC gRNA",xlab="ES")
+grid()
+
+```
+
+Could FBXW11 be a gene that is activated downstream of DsRed.
+
+## 3. Rfx_NTfc_ctl versus Rfx_Tfx_ctl
+
+```{r,dge3}
+
+ss3 <- subset(ss,SampleGroup=="Rfx_NTfx_ctl" | SampleGroup=="Rfx_Tfx_ctl")
+ss3$trt <- factor(grepl("_Tfx",ss3$SampleGroup))
+rownames(ss3) <- ss3$SampleLabel
+
+xx3 <- xx[,colnames(xx) %in% ss3$SampleLabel]
+xx3f <- xx3[rowMeans(xx3)>=10,]
+dim(xx3)
+dim(xx3f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx3f , colData = ss3, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by transfection in Rfx") %>%
+  kable_paper("hover", full_width = F)
+
+dge3 <- dge
+write.table(dge3,file="dge3.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge3,"Rfx: NTfc ctl vs Tfx ctl")
+make_volcano(dge3,"Rfx: NTfc ctl vs Tfx ctl")
+make_heatmap(dge3,"Rfx: NTfc ctl vs Tfx ctl",ss3,xx3,n=30)
+
+# pathway
+dge3$gene <- sapply(strsplit(rownames(dge3)," "),"[[",2)
+m3 <- aggregate(stat ~ gene,dge3,mean)
+rownames(m3) <- m3$gene ; m3$gene <- NULL
+mres3 <- mitch_calc(m3, go, priority="effect",cores=8)
+
+head(mres3$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx: NTfc ctl vs Tfx ctl") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres3$enrichment_result,file="mitch3.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres3$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx: NTfc ctl vs Tfx ctl",xlab="ES")
+grid()
+
+```
+
+## 4. Hf_NTC_gRNA versus Hf_DsRed_gRNA 
+
+```{r,dge4}
+
+ss4 <- subset(ss,SampleGroup=="Hf_NTC_gRNA" | SampleGroup=="Hf_DsRed_gRNA")
+ss4$trt <- factor(grepl("DsRed",ss4$SampleGroup))
+rownames(ss4) <- ss4$SampleLabel
+
+xx4 <- xx[,colnames(xx) %in% ss4$SampleLabel]
+xx4f <- xx4[rowMeans(xx4)>=10,]
+dim(xx4)
+dim(xx4f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx4f , colData = ss4, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by DsRed targeting in Hf") %>%
+  kable_paper("hover", full_width = F)
+
+dge4 <- dge
+write.table(dge4,file="dge4.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge4,"Hf: NTC gRNA vs DsRed gRNA")
+make_volcano(dge4,"Hf: NTC gRNA vs DsRed gRNA")
+make_heatmap(dge4,"Hf: NTC gRNA vs DsRed gRNA",ss4,xx4,n=30)
+
+# pathway
+dge4$gene <- sapply(strsplit(rownames(dge4)," "),"[[",2)
+m4 <- aggregate(stat ~ gene,dge4,mean)
+rownames(m4) <- m4$gene ; m4$gene <- NULL
+mres4 <- mitch_calc(m4, go, priority="effect",cores=8)
+
+head(mres4$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Hf: NTC gRNA vs DsRed gRNA") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres4$enrichment_result,file="mitch4.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres4$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Hf: NTC gRNA vs DsRed gRNA",xlab="ES")
+grid()
+
+```
+
+## 5. Hf_Tfx_ctl versus Hf_NTC_gRNA 
+
+Now examining the effect of adding the NTC gRNA.
+
+```{r,dge5}
+
+ss5 <- subset(ss,SampleGroup=="Hf_Tfx_ctl" | SampleGroup=="Hf_NTC_gRNA")
+ss5$trt <- factor(grepl("NTC",ss5$SampleGroup))
+rownames(ss5) <- ss5$SampleLabel
+xx5 <- xx[,colnames(xx) %in% ss5$SampleLabel]
+xx5f <- xx5[rowMeans(xx5)>=10,]
+dim(xx5)
+dim(xx5f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx5f , colData = ss5, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by NTC gRNA compared to transfection control") %>%
+  kable_paper("hover", full_width = F)
+
+dge5 <- dge
+write.table(dge5,file="dge2.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge5,"Hf: Tfx ctl vs NTC gRNA")
+make_volcano(dge5,"Hf: Tfx ctl vs NTC gRNA")
+make_heatmap(dge5,"Hf: Tfx ctl vs NTC gRNA",ss5,xx5,n=30)
+
+# pathway
+dge5$gene <- sapply(strsplit(rownames(dge5)," "),"[[",2)
+m5 <- aggregate(stat ~ gene,dge5,mean)
+rownames(m5) <- m5$gene ; m5$gene <- NULL
+mres5 <- mitch_calc(m5, go, priority="effect",cores=8)
+
+head(mres5$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Hf: Tfx ctl vs NTC gRNA") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres5$enrichment_result,file="mitch5.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres5$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Hf: Tfx ctl vs NTC gRNA",xlab="ES")
+grid()
+
+```
+
+## 6. Hf_NTfx_ctl versus Hf_Tfx_ctl
+
+```{r,dge6}
+
+ss6 <- subset(ss,SampleGroup=="Hf_NTfx_ctl" | SampleGroup=="Hf_Tfx_gRNA")
+ss6$trt <- factor(grepl("_Tfx",ss6$SampleGroup))
+rownames(ss6) <- ss6$SampleLabel
+
+xx6 <- xx[,colnames(xx) %in% ss6$SampleLabel]
+xx6f <- xx6[rowMeans(xx6)>=10,]
+dim(xx6)
+dim(xx6f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx6f , colData = ss6, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by transfection in Hf") %>%
+  kable_paper("hover", full_width = F)
+
+dge6 <- dge
+write.table(dge6,file="dge6.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge6,"Hf: NTfc ctl vs Tfx ctl")
+make_volcano(dge6,"Hf: NTfc ctl vs Tfx ctl")
+make_heatmap(dge6,"Hf: NTfc ctl vs Tfx ctl",ss6,xx6,n=30)
+
+# pathway
+dge6$gene <- sapply(strsplit(rownames(dge6)," "),"[[",2)
+m6 <- aggregate(stat ~ gene,dge6,mean)
+rownames(m6) <- m6$gene ; m6$gene <- NULL
+mres6 <- mitch_calc(m6, go, priority="effect",cores=8)
+
+head(mres6$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Hf: NTfc ctl vs Tfx ctl") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres6$enrichment_result,file="mitch6.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres6$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Hf: NTfc ctl vs Tfx ctl",xlab="ES")
+grid()
+
+```
+
+## 7. Rfx_DsRed_gRNA versus Hf_DsRed_gRNA
+
+```{r,dge7}
+
+ss7 <- subset(ss,SampleGroup=="Rfx_DsRed_gRNA" | SampleGroup=="Hf_DsRed_gRNA")
+ss7$trt <- factor(grepl("Hf",ss7$SampleGroup))
+rownames(ss7) <- ss7$SampleLabel
+
+xx7 <- xx[,colnames(xx) %in% ss7$SampleLabel]
+xx7f <- xx7[rowMeans(xx7)>=10,]
+dim(xx7)
+dim(xx7f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx7f , colData = ss7, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes in Hf as compared to Rfx (DsRed gDNA)") %>%
+  kable_paper("hover", full_width = F)
+
+dge7 <- dge
+write.table(dge7,file="dge7.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA")
+make_volcano(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA")
+make_heatmap(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA",ss7,xx7,n=30)
+
+# pathway
+dge7$gene <- sapply(strsplit(rownames(dge7)," "),"[[",2)
+m7 <- aggregate(stat ~ gene,dge7,mean)
+rownames(m7) <- m7$gene ; m7$gene <- NULL
+mres7 <- mitch_calc(m7, go, priority="effect",cores=8)
+
+head(mres7$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx DsRed gRNA vs Hf DsRed gRNA") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres7$enrichment_result,file="mitch7.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres7$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx DsRed gRNA vs Hf DsRed gRNA",xlab="ES")
+grid()
+
+```
+
+## 8. Rfx_NTC_gRNA versus Hf_NTC_gRNA
+
+```{r,dge8}
+
+ss8 <- subset(ss,SampleGroup=="Rfx_NTC_gRNA" | SampleGroup=="Hf_NTC_gRNA")
+ss8$trt <- factor(grepl("Hf",ss8$SampleGroup))
+rownames(ss8) <- ss8$SampleLabel
+
+xx8 <- xx[,colnames(xx) %in% ss8$SampleLabel]
+xx8f <- xx8[rowMeans(xx8)>=10,]
+dim(xx8)
+dim(xx8f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx8f , colData = ss8, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes in Hf as compared to Rfx (NTC gDNA)") %>%
+  kable_paper("hover", full_width = F)
+
+dge8 <- dge
+write.table(dge8,file="dge8.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge8,"Rfx NTC gRNA vs Hf NTC gRNA")
+make_volcano(dge8,"Rfx NTC gRNA vs Hf NTC gRNA")
+make_heatmap(dge8,"Rfx NTC gRNA vs Hf NTC gRNA",ss8,xx8,n=30)
+
+# pathway
+dge8$gene <- sapply(strsplit(rownames(dge8)," "),"[[",2)
+m8 <- aggregate(stat ~ gene,dge8,mean)
+rownames(m8) <- m8$gene ; m8$gene <- NULL
+mres8 <- mitch_calc(m8, go, priority="effect",cores=8)
+
+head(mres8$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx NTC gRNA vs Hf NTC gRNA") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres8$enrichment_result,file="mitch8.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres8$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx NTC gRNA vs Hf NTC gRNA",xlab="ES")
+grid()
+
+```
+
+## 9. Rfx_Tfx_ctl versus Hf_Tfx_ctl
+
+```{r,dge9}
+
+ss9 <- subset(ss,SampleGroup=="Rfx_Tfx_ctl" | SampleGroup=="Hf_Tfx_ctl")
+ss9$trt <- factor(grepl("Hf",ss9$SampleGroup))
+rownames(ss9) <- ss9$SampleLabel
+
+xx9 <- xx[,colnames(xx) %in% ss9$SampleLabel]
+xx9f <- xx9[rowMeans(xx9)>=10,]
+dim(xx9)
+dim(xx9f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx9f , colData = ss9, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes in Hf as compared to Rfx (Tfx ctl)") %>%
+  kable_paper("hover", full_width = F)
+
+dge9 <- dge
+write.table(dge9,file="dge9.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge9,"Rfx Tfx ctl vs Hf Tfx ctl")
+make_volcano(dge9,"Rfx Tfx ctl vs Hf Tfx ctl")
+make_heatmap(dge9,"Rfx Tfx ctl vs Hf Tfx ctl",ss9,xx9,n=30)
+
+# pathway
+dge9$gene <- sapply(strsplit(rownames(dge9)," "),"[[",2)
+m9 <- aggregate(stat ~ gene,dge9,mean)
+rownames(m9) <- m9$gene ; m9$gene <- NULL
+mres9 <- mitch_calc(m9, go, priority="effect",cores=8)
+
+head(mres9$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx Tfx ctl vs Hf Tfx ctl") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres9$enrichment_result,file="mitch9.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres9$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx Tfx ctl vs Hf Tfx ctl",xlab="ES")
+grid()
+
+```
+
+## 10. Rfx_NTfx_ctl versus Hf_NTfx_ctl
+
+```{r,dge10}
+
+ss10 <- subset(ss,SampleGroup=="Rfx_NTfx_ctl" | SampleGroup=="Hf_NTfx_ctl")
+ss10$trt <- factor(grepl("Hf",ss10$SampleGroup))
+rownames(ss10) <- ss10$SampleLabel
+
+xx10 <- xx[,colnames(xx) %in% ss10$SampleLabel]
+xx10f <- xx10[rowMeans(xx10)>=10,]
+dim(xx10)
+dim(xx10f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx10f , colData = ss10, design = ~ trt )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes in Hf as compared to Rfx (NTfx ctl)") %>%
+  kable_paper("hover", full_width = F)
+
+dge10 <- dge
+write.table(dge10,file="dge10.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge10,"Rfx NTfx ctl vs Hf NTfx ctl")
+make_volcano(dge10,"Rfx NTfx ctl vs Hf NTfx ctl")
+make_heatmap(dge10,"Rfx NTfx ctl vs Hf NTfx ctl",ss10,xx10,n=30)
+
+# pathway
+dge10$gene <- sapply(strsplit(rownames(dge10)," "),"[[",2)
+m10 <- aggregate(stat ~ gene,dge10,mean)
+rownames(m10) <- m10$gene ; m10$gene <- NULL
+mres10 <- mitch_calc(m10, go, priority="effect",cores=8)
+
+head(mres10$enrichment_result,20) %>%
+  kbl(caption = "Top GO in Rfx NTfx ctl vs Hf NTfx ctl") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres10$enrichment_result,file="mitch10.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres7$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Rfx NTfx ctl vs Hf NTfx ctl",xlab="ES")
+grid()
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+```
+
+## Cross comparison
+
+Make a Euler diagram of the differentially expressed genes.
+
+```{r,euler11}
+
+up1 <- unique(sapply(strsplit(rownames(subset(dge1,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up2 <- unique(sapply(strsplit(rownames(subset(dge2,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up3 <- unique(sapply(strsplit(rownames(subset(dge3,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up4 <- unique(sapply(strsplit(rownames(subset(dge4,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up5 <- unique(sapply(strsplit(rownames(subset(dge5,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up6 <- unique(sapply(strsplit(rownames(subset(dge6,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up7 <- unique(sapply(strsplit(rownames(subset(dge7,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up8 <- unique(sapply(strsplit(rownames(subset(dge8,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up9 <- unique(sapply(strsplit(rownames(subset(dge9,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+up10 <- unique(sapply(strsplit(rownames(subset(dge10,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+
+dn1 <- unique(sapply(strsplit(rownames(subset(dge1,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn2 <- unique(sapply(strsplit(rownames(subset(dge2,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn3 <- unique(sapply(strsplit(rownames(subset(dge3,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn4 <- unique(sapply(strsplit(rownames(subset(dge4,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn5 <- unique(sapply(strsplit(rownames(subset(dge5,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn6 <- unique(sapply(strsplit(rownames(subset(dge6,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn7 <- unique(sapply(strsplit(rownames(subset(dge7,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn8 <- unique(sapply(strsplit(rownames(subset(dge8,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn9 <- unique(sapply(strsplit(rownames(subset(dge9,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+dn10 <- unique(sapply(strsplit(rownames(subset(dge10,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+
+
+v1 <- list("Up1"=up1,"Up2"=up2,"Up3"=up3,
+  "Dn1"=dn1,"Dn2"=dn2,"Dn3"=dn3)
+
+plot(euler(v1), quantities = TRUE, main="Rfx gene overlap")
+
+v1 <- list("Up4"=up4,"Up5"=up5,"Up6"=up6,
+  "Dn4"=dn4,"Dn5"=dn5,"Dn6"=dn6)
+
+plot(euler(v1), quantities = TRUE, main="Hf gene overlap")
+
+v1 <- list("Up7"=up7,"Up8"=up8,"Up9"=up9,"Up10"=up10,
+  "Dn7"=dn7,"Dn8"=dn8,"Dn9"=dn9,"Dn10"=dn10)
+
+plot(euler(v1), quantities = TRUE, main="Rfx-Hf comparison gene overlap")
+
+
+v1 <- list("Up1"=up1,"Up2"=up2,"Up3"=up3, "Up4"=up4,"Up5"=up5,"Up6"=up6,"Up7"=up7,"Up8"=up8,"Up9"=up9,"Up10"=up10,
+  "Dn1"=dn1,"Dn2"=dn2,"Dn3"=dn3,"Dn4"=dn4,"Dn5"=dn5,"Dn6"=dn6,"Dn7"=dn7,"Dn8"=dn8,"Dn9"=dn9,"Dn10"=dn10)
+
+upset(fromList(v1), order.by = "freq")
+
+```
+
+## Multi-dimensional pathway enrichment
+
+This is a unique feature of mitch package that allows us to look at enrichment in two or more contrasts.
+
+First we look at Rfx.
+
+```{r,mitch2d_Rfx}
+
+l <- list("NTC v DsRed gRNA"=m1,
+  "Tfx v NTC"=m2,
+  "NTfc v Tfx"=m3)
+
+mm <- mitch_import(l, DEtype="prescored")
+head(mm)
+
+mmres_rfx <- mitch_calc(mm, go, priority="effect",cores=8)
+
+head(mmres_rfx$enrichment_result,20) %>%
+  kbl(caption = "Top pathways for Rfx contrasts") %>%
+  kable_paper("hover", full_width = F)
+
+top <- head(subset(mmres_rfx$enrichment_result,p.adjustMANOVA<0.05),30)
+mycols <- grep("^s\\.",colnames(top))
+mycols <- mycols[1:length(mycols)-1]
+mx <- as.matrix(top[,mycols])
+rownames(mx) <- top$set
+
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+
+heatmap.2(mx,trace="none",col=colfunc(25),scale="none",
+    margins = c(7,25), cexRow=0.8, cexCol=0.8,
+    main="Top pathways for Rfx contrasts" )
+
+```
+
+Now Hf.
+
+```{r,mitch2d_Hf}
+
+l <- list("NTC v DsRed gRNA"=m4,
+  "Tfx v NTC"=m5,
+  "NTfc v Tfx"=m6)
+
+mm <- mitch_import(l, DEtype="prescored")
+head(mm)
+
+mmres_hf <- mitch_calc(mm, go, priority="effect",cores=8)
+
+head(mmres_hf$enrichment_result,20) %>%
+  kbl(caption = "Top pathways for Hf contrasts") %>%
+  kable_paper("hover", full_width = F)
+
+top <- head(subset(mmres_hf$enrichment_result,p.adjustMANOVA<0.05),30)
+mycols <- grep("^s\\.",colnames(top))
+mycols <- mycols[1:length(mycols)-1]
+mx <- as.matrix(top[,mycols])
+rownames(mx) <- top$set
+
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+
+heatmap.2(mx,trace="none",col=colfunc(25),scale="none",
+    margins = c(7,25), cexRow=0.8, cexCol=0.8,
+    main="Top pathways for Hf contrasts" )
+
+```
+
+Now some Rfx vs Hf.
+
+```{r,mitch2d_compare1}
+
+l <- list("Rfx C v gRNA"=m1,
+  "Hf C v gRNA"=m4)
+
+mm <- mitch_import(l, DEtype="prescored")
+head(mm)
+
+mmres_vs1 <- mitch_calc(mm, go, priority="effect",cores=8)
+
+head(mmres_vs1$enrichment_result,20) %>%
+  kbl(caption = "Top pathways for NTC vs gRNA in Rfx and Hf") %>%
+  kable_paper("hover", full_width = F)
+
+top <- head(subset(mmres_vs1$enrichment_result,p.adjustMANOVA<0.05),30)
+mycols <- grep("^s\\.",colnames(top))
+mycols <- mycols[1:length(mycols)-1]
+mx <- as.matrix(top[,mycols])
+rownames(mx) <- top$set
+
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+
+heatmap.2(mx,trace="none",col=colfunc(25),scale="none",
+    margins = c(7,25), cexRow=0.8, cexCol=0.8,
+    main="Top pathways for NTC vs gRNA in Rfx and Hf" )
+
+```
+
+## Session information
+
+```{r,save}
+
+sessionInfo()
+
+```
