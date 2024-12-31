@@ -719,7 +719,7 @@ grid()
 
 ```{r,dge6}
 
-ss6 <- subset(ss,SampleGroup=="Hf_NTfx_ctl" | SampleGroup=="Hf_Tfx_gRNA")
+ss6 <- subset(ss,SampleGroup=="Hf_NTfx_ctl" | SampleGroup=="Hf_Tfx_ctl")
 ss6$trt <- factor(grepl("_Tfx",ss6$SampleGroup))
 rownames(ss6) <- ss6$SampleLabel
 
