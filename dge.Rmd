@@ -227,7 +227,7 @@ XMAX=max(mymds[,1])*1.5
 
 plot(mymds, xlab="Coordinate 1", ylab="Coordinate 2",
   type = "p",bty="n",pch=shf$shape, cex=4, col=shf$col,
-  xlim=c(XMIN,XMAX), main = "MDS plot: Rfx")
+  xlim=c(XMIN,XMAX), main = "MDS plot: Hf")
 
 text(cmdscale(dist(t(xhf))), labels=colnames(xhf) )
 
@@ -347,6 +347,28 @@ mtext(paste("Reduction:",reduction,"%"))
 
 # Analysis of differential gene expression
 
+I will be looking at the following comparisons (control vs case).
+
+1. Rfx_NTC_gRNA versus Rfx_DsRed_gRNA
+
+2. Rfx_Tfx_ctl versus Rfx_NTC_gRNA
+
+3. Rfx_NTfc_ctl versus Rfx_Tfx_ctl
+
+4. Hf_NTC_gRNA versus Hf_DsRed_gRNA
+
+5. Hf_Tfx_ctl versus Hf_NTC_gRNA
+
+6. Hf_NTfx_ctl versus Hf_Tfx_ctl
+
+7. Rfx_DsRed_gRNA versus Hf_DsRed_gRNA
+
+8. Rfx_NTC_gRNA versus Hf_NTC_gRNA
+
+9. Rfx_Tfx_ctl versus Hf_Tfx_ctl
+
+10. Rfx_NTfx_ctl versus Hf_NTfx_ctl
+
 ## Plot functions
 
 ```{r,plot_functions}
@@ -459,6 +481,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Rfx: NTC gRNA vs DsRed gRNA",xlab="ES")
 grid()
 
+if ( ! file.exists("mitch1.html") ) {
+  mitch_report(res=mres1,outfile="mitch1.html")
+}
+
 ```
 
 There are some off target effects caused by the DsRed targeting gRNA.
@@ -524,6 +550,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Rfx: Tfx ctl vs NTC gRNA",xlab="ES")
 grid()
 
+if ( ! file.exists("mitch2.html") ) {
+  mitch_report(res=mres2,outfile="mitch2.html")
+}
+
 ```
 
 Could FBXW11 be a gene that is activated downstream of DsRed.
@@ -588,6 +618,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Rfx: NTfc ctl vs Tfx ctl",xlab="ES")
 grid()
 
+if ( ! file.exists("mitch3.html") ) {
+  mitch_report(res=mres3,outfile="mitch3.html")
+}
+
 ```
 
 ## 4. Hf_NTC_gRNA versus Hf_DsRed_gRNA 
@@ -649,6 +683,10 @@ vec <- vec[order(vec)]
 barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Hf: NTC gRNA vs DsRed gRNA",xlab="ES")
 grid()
+
+if ( ! file.exists("mitch4.html") ) {
+  mitch_report(res=mres4,outfile="mitch4.html")
+}
 
 ```
 
@@ -713,6 +751,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Hf: Tfx ctl vs NTC gRNA",xlab="ES")
 grid()
 
+if ( ! file.exists("mitch5.html") ) {
+  mitch_report(res=mres5,outfile="mitch5.html")
+}
+
 ```
 
 ## 6. Hf_NTfx_ctl versus Hf_Tfx_ctl
@@ -774,6 +816,10 @@ vec <- vec[order(vec)]
 barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Hf: NTfc ctl vs Tfx ctl",xlab="ES")
 grid()
+
+if ( ! file.exists("mitch6.html") ) {
+  mitch_report(res=mres6,outfile="mitch6.html")
+}
 
 ```
 
@@ -837,6 +883,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Rfx DsRed gRNA vs Hf DsRed gRNA",xlab="ES")
 grid()
 
+if ( ! file.exists("mitch7.html") ) {
+  mitch_report(res=mres7,outfile="mitch7.html")
+}
+
 ```
 
 ## 8. Rfx_NTC_gRNA versus Hf_NTC_gRNA
@@ -898,6 +948,10 @@ vec <- vec[order(vec)]
 barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Rfx NTC gRNA vs Hf NTC gRNA",xlab="ES")
 grid()
+
+if ( ! file.exists("mitch8.html") ) {
+  mitch_report(res=mres8,outfile="mitch8.html")
+}
 
 ```
 
@@ -961,6 +1015,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
   main="Rfx Tfx ctl vs Hf Tfx ctl",xlab="ES")
 grid()
 
+if ( ! file.exists("mitch9.html") ) {
+  mitch_report(res=mres9,outfile="mitch9.html")
+}
+
 ```
 
 ## 10. Rfx_NTfx_ctl versus Hf_NTfx_ctl
@@ -1009,7 +1067,7 @@ head(mres10$enrichment_result,20) %>%
 write.table(mres10$enrichment_result,file="mitch10.tsv",quote=FALSE,sep='\t')
 
 par(mar=c(5,25,3,3))
-top <- mres7$enrichment_result
+top <- mres10$enrichment_result
 top <- subset(top,p.adjustANOVA<0.05)
 nrow(top)
 up <- head(subset(top,s.dist>0),20)
@@ -1024,6 +1082,10 @@ barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
 grid()
 
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+if ( ! file.exists("mitch10.html") ) {
+  mitch_report(res=mres10,outfile="mitch10.html")
+}
 
 ```
 
