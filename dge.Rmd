@@ -112,8 +112,8 @@ gt$V1 = gt$V2 = gt$V3 = NULL
 head(gt)
 
 # add cas13d and DsRed
-add <- data.frame(c("cas13d cas13d","DsRed DsRed"))
-rownames(add) <- c("cas13d","DsRed")
+add <- data.frame(c("cas13d cas13d","DsRed DsRed","Fbxw11-GFP Fbxw11-GFP"))
+rownames(add) <- c("cas13d","DsRed","Fbxw11-GFP")
 colnames(add) <- "gene"
 gt2 <- as.data.frame(rbind(add,gt))
 head(gt2)
@@ -133,6 +133,7 @@ rownames(xmg) <- xmg$gene
 xmg$gene = NULL
 xx <- round(xmg)
 head(xx)
+tail(xx)
 
 # reordering the columns
 rownames(ss) == colnames(xx)
@@ -287,10 +288,11 @@ rpm <- apply(xx,2, function(x) {x / sum(x) * 1e6 } )
 
 cas13 <- unlist(rpm[1,,drop=TRUE])
 dsred <- unlist(rpm[2,,drop=TRUE])
-
+fbox <- rpm[nrow(rpm),,drop=TRUE]
 par(mar=c(5,10,3,1))
 barplot(cas13,horiz=TRUE,las=1,xlab="Reads per million",main="Cas13d")
 barplot(dsred,horiz=TRUE,las=1,xlab="Reads per million",main="DsRed")
+barplot(fbox,horiz=TRUE,las=1,xlab="Reads per million",main="Fbxw11-GFP")
 
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 
@@ -300,6 +302,7 @@ There is a >1200 RPM for Cas13 in all these samples.
 DsRed was absent in NTfx samples.
 There was much less DsRed in targeting gDNA samples as compared to non-targeting controls
 and transfection controls.
+Fbxw11-GFP expression tracked DsRed.
 
 ```{r,dsred_cas13d_2}
 
@@ -337,6 +340,50 @@ MAX=max(unlist(lapply(dat,max)))
 
 boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
   main="DsRed expresssion (Rfx)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+
+dmean <- unlist(lapply(dat,mean))
+reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
+mtext(paste("Reduction:",reduction,"%"))
+
+```
+
+```{r,fbox_cas13d_2}
+
+## HF
+ds <- fbox[grep("Hf",names(fbox))]
+
+targeting_gRNA <- ds[grep("DsRed_gRNA",names(ds))]
+
+nontargeting_gRNA <- ds[grep("NTC_gRNA",names(ds))]
+
+dat <- list("Non-targeting gRNA"=nontargeting_gRNA,
+"Targeting gRNA"=targeting_gRNA)
+
+MAX=max(unlist(lapply(dat,max)))
+
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="Fbxw11-GFP expresssion (Hf)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+
+dmean <- unlist(lapply(dat,mean))
+reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
+mtext(paste("Reduction:",reduction,"%"))
+
+## RFX
+ds <- fbox[grep("Rfx",names(fbox))]
+
+targeting_gRNA <- ds[grep("DsRed_gRNA",names(ds))]
+
+nontargeting_gRNA <- ds[grep("NTC_gRNA",names(ds))]
+
+dat <- list("Non-targeting gRNA"=nontargeting_gRNA,
+"Targeting gRNA"=targeting_gRNA)
+
+MAX=max(unlist(lapply(dat,max)))
+
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="Fbxw11-GFP expresssion (Rfx)", col="white",frame=FALSE)
 beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
 
 dmean <- unlist(lapply(dat,mean))

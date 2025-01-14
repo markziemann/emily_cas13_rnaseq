@@ -8,7 +8,7 @@ wget https://ftp.ensembl.org/pub/release-113/fasta/gallus_gallus/ncrna/Gallus_ga
 
 cat Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.cdna.all.fa.gz Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.ncrna.fa.gz > Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.cdna+ncrna.fa.gz
 
-zcat Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.cdna+ncrna.fa.gz | cat dsred.fa cas13.fa - > ref.fa
+zcat Gallus_gallus.bGalGal1.mat.broiler.GRCg7b.cdna+ncrna.fa.gz | cat Fbxw11-GFP.fa dsred.fa cas13.fa - > ref.fa
 
 kallisto index -i ref.fa.idx ref.fa
 
