@@ -12,7 +12,7 @@ output:
 theme: cosmo
 ---
 
-Source: TBA
+Source: https://github.com/markziemann/emily_cas13_rnaseq
 
 ## Introduction
 
@@ -429,13 +429,17 @@ maplot <- function(de,contrast_name) {
   DET=nrow(de)
   SUBHEADER = paste(GENESUP, "up, ", GENESDN, "down", DET, "detected")
   ns <-subset(de, padj > 0.05 )
-  plot(log2(de$baseMean),de$log2FoldChange,
-       xlab="log2 basemean", ylab="log2 foldchange",
+  plot(log10(de$baseMean),de$log2FoldChange,
+       xlab="log10 basemean", ylab="log2 foldchange",
        pch=19, cex=0.5, col="dark gray",
        main=contrast_name, cex.main=1)
-  points(log2(sig$baseMean),sig$log2FoldChange,
-         pch=19, cex=0.5, col="red")
+  points(log10(sig$baseMean),sig$log2FoldChange,
+         pch=19, cex=0.5, col="darkorange")
   mtext(SUBHEADER,cex = 1)
+  gfprow <- grep("Fbxw11-GFP",rownames(de))
+  points(log10(de$baseMean[gfprow]),de$log2FoldChange[gfprow],pch=19, cex=0.9, col="darkgreen")
+  redrow <- grep("DsRed",rownames(de))
+  points(log10(de$baseMean[redrow]),de$log2FoldChange[redrow],pch=19, cex=0.9, col="red")
 }
 
 make_volcano <- function(de,name) {
@@ -449,7 +453,11 @@ make_volcano <- function(de,name) {
         main=name, xlab="log2 FC", ylab="-log10 pval", xlim=c(-6,6))
     mtext(HEADER)
     grid()
-    points(sig$log2FoldChange,-log10(sig$pval),cex=0.5,pch=19,col="red")
+    points(sig$log2FoldChange,-log10(sig$pval),cex=0.5,pch=19,col="darkorange")
+    gfprow <- grep("Fbxw11-GFP",rownames(de))
+    points(de$log2FoldChange[gfprow], -log10(de$pval)[gfprow],pch=19, cex=0.9, col="darkgreen")
+    redrow <- grep("DsRed",rownames(de))
+    points(de$log2FoldChange[redrow], -log10(de$pval)[redrow], pch=19, cex=0.9, col="red")
 }
 
 make_heatmap <- function(de,name,myss,mx,n=30){
@@ -462,7 +470,7 @@ make_heatmap <- function(de,name,myss,mx,n=30){
   mxn <- mx/rowSums(mx)*1000000
   x <- mxn[which(rownames(mxn) %in% rownames(head(de,n))),]
   heatmap.2(as.matrix(x),trace="none",col=colfunc(25),scale="row",
-    margins = c(7,20), cexRow=0.8, cexCol=1.0,
+    margins = c(7,20), cexRow=0.8, cexCol=0.8,
     main=paste("Top ranked",n,"genes in",name) )
 }
 
@@ -531,6 +539,18 @@ grid()
 if ( ! file.exists("mitch1.html") ) {
   mitch_report(res=mres1,outfile="mitch1.html")
 }
+
+
+o <- dge1[order(dge1$baseMean),]
+NBINS=20
+brks <- quantile(o$baseMean, probs = c(seq(0,1,1/NBINS) ) )
+o$quant <- cut(o$baseMean, breaks = brks, labels = 1:NBINS, include.lowest = TRUE)
+z <- lapply(unique(o$quant) , function(i) { y <- subset(o,quant==i) ; y$log2FoldChange } )
+names(z) <- 1:NBINS
+XLAB=paste("Expression bin,",round(nrow(o)/NBINS),"genes each")
+boxplot(z,ylim=c(-0.5,0.5),xlab=XLAB,ylab="Fold change",
+  main="Rfx: NTC gRNA vs DsRed gRNA")
+abline(h=0,col="red",lty=2,lwd=2)
 
 ```
 
@@ -734,6 +754,17 @@ grid()
 if ( ! file.exists("mitch4.html") ) {
   mitch_report(res=mres4,outfile="mitch4.html")
 }
+
+o <- dge4[order(dge4$baseMean),]
+NBINS=20
+brks <- quantile(o$baseMean, probs = c(seq(0,1,1/NBINS) ) )
+o$quant <- cut(o$baseMean, breaks = brks, labels = 1:NBINS, include.lowest = TRUE)
+z <- lapply(unique(o$quant) , function(i) { y <- subset(o,quant==i) ; y$log2FoldChange } )
+names(z) <- 1:NBINS
+XLAB=paste("Expression bin,",round(nrow(o)/NBINS),"genes each")
+boxplot(z,ylim=c(-0.5,0.5),xlab=XLAB,ylab="Fold change",
+  main="Hf: NTC gRNA vs DsRed gRNA")
+abline(h=0,col="red",lty=2,lwd=2)
 
 ```
 
@@ -1136,9 +1167,114 @@ if ( ! file.exists("mitch10.html") ) {
 
 ```
 
+## 11. Interaction between cell line and target gRNA 
+
+```{r,dge11}
+
+ss11 <- subset(ss,SampleGroup=="Rfx_NTC_gRNA" | SampleGroup=="Rfx_DsRed_gRNA" | SampleGroup=="Hf_NTC_gRNA" | SampleGroup=="Hf_DsRed_gRNA")
+ss11$tgt <- factor(grepl("DsRed",ss11$SampleGroup))
+ss11$hf <- factor(grepl("Hf",ss11$SampleGroup))
+
+rownames(ss11) <- ss11$SampleLabel
+
+xx11 <- xx[,colnames(xx) %in% ss11$SampleLabel]
+xx11f <- xx11[rowMeans(xx11)>=10,]
+dim(xx11)
+dim(xx11f)
+
+dds <- DESeqDataSetFromMatrix(countData = xx11f , colData = ss11, design = ~ tgt * hf )
+res <- DESeq(dds)
+z <- results(res)
+vsd <- vst(dds, blind=FALSE)
+zz <- cbind(as.data.frame(z),assay(vsd))
+dge <- as.data.frame(zz[order(zz$pvalue),])
+
+head(dge,20) %>%
+  kbl(caption = "Top gene expression changes caused by interaction of DsRed targeting and  Rfx vs Hf") %>%
+  kable_paper("hover", full_width = F)
+
+dge11 <- dge
+write.table(dge11,file="dge11.tsv",quote=FALSE,sep='\t')
+
+# plots
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+maplot(dge11,"gRNA target * Rfx/HF interaction")
+make_volcano(dge11,"gRNA target * Rfx/HF interaction")
+make_heatmap(dge11,"gRNA target * Rfx/HF interaction",ss11,xx11,n=20)
+
+# pathway
+dge11$gene <- sapply(strsplit(rownames(dge11)," "),"[[",2)
+m11 <- aggregate(stat ~ gene,dge11,mean)
+rownames(m11) <- m11$gene ; m11$gene <- NULL
+mres11 <- mitch_calc(m11, go, priority="effect",cores=8)
+
+head(mres11$enrichment_result,20) %>%
+  kbl(caption = "Top GO in gRNA target * Rfx/Hf interaction") %>%
+  kable_paper("hover", full_width = F)
+
+write.table(mres11$enrichment_result,file="mitch11.tsv",quote=FALSE,sep='\t')
+
+par(mar=c(5,25,3,3))
+top <- mres11$enrichment_result
+top <- subset(top,p.adjustANOVA<0.05)
+nrow(top)
+up <- head(subset(top,s.dist>0),20)
+dn <- head(subset(top,s.dist<0),20)
+top <- rbind(up,dn)
+vec=top$s.dist
+names(vec)=top$set
+names(vec) <- gsub("_"," ",names(vec))
+vec <- vec[order(vec)]
+barplot(abs(vec),col=sign(-vec)+3,horiz=TRUE,las=1,cex.names=0.7,
+  main="Top GO in gRNA target * Rfx/Hf interaction",xlab="ES")
+grid()
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+if ( ! file.exists("mitch11.html") ) {
+  mitch_report(res=mres11,outfile="mitch11.html")
+}
+
+```
+
 ## Cross comparison
 
 Make a Euler diagram of the differentially expressed genes.
+
+Specifically compare contrast 1 and 4.
+
+```{r,euler0}
+
+up1 <- unique(sapply(strsplit(rownames(subset(dge1,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+dn1 <- unique(sapply(strsplit(rownames(subset(dge1,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+
+up4 <- unique(sapply(strsplit(rownames(subset(dge4,padj < 0.05 & log2FoldChange > 0))," "),"[[",2))
+dn4 <- unique(sapply(strsplit(rownames(subset(dge4,padj < 0.05 & log2FoldChange < 0))," "),"[[",2))
+
+v1 <- list("Rfx up"=up1,"Rfx  dn"=dn1,
+  "Hf up"=up4,"Hf dn"=dn4)
+
+plot(euler(v1), quantities = TRUE, main="NTC vs DsRed gRNA")
+
+message("Common up genes")
+intersect(up1,up4)
+
+message("Common down genes")
+intersect(dn1,dn4)
+
+message("Up genes specific to Rfx")
+setdiff(up1,up4)
+
+message("Up genes specific to Hf")
+setdiff(up4,up1)
+
+message("Down genes specific to Rfx")
+setdiff(dn1,dn4)
+
+message("Down genes specific to Hf")
+setdiff(dn4,dn1)
+
+```
 
 ```{r,euler11}
 
@@ -1188,11 +1324,111 @@ upset(fromList(v1), order.by = "freq")
 
 ```
 
+## Scatterplot of NTC vs DsRed gRNA
+
+```{r,rfx_v_hf}
+
+l <- list("Rfx"=m1, "Hf"=m4)
+m <- mitch_import(l, DEtype="prescored")
+head(m)
+
+plot(m,ylim=c(-50,10),xlim=c(-50,10),main="Test stat")
+abline(1,1,col="red",lty=2,lwd=2)
+sig <- subset(m,Rfx < -10)
+points(sig,pch=19)
+text(sig$Rfx,sig$Hf-2,labels=rownames(sig))
+
+sig
+
+plot(m,ylim=c(-11,10),xlim=c(-11,10),main="Test stat")
+abline(1,1,col="red",lty=2,lwd=2)
+sig <- subset(m,Hf > 5 | Rfx > 5 | Hf < -5 | Rfx < -5)
+points(sig,pch=19)
+text(sig$Rfx,sig$Hf+0.5,labels=rownames(sig),cex=0.7)
+
+plot(m,ylim=c(-2,11),xlim=c(-2,11),main="Test stat")
+abline(1,1,col="red",lty=2,lwd=2)
+sig <- subset(m,Hf > 5 | Rfx > 5)
+points(sig,pch=19)
+text(sig$Rfx,sig$Hf+0.5,labels=rownames(sig),cex=0.7)
+
+sig
+
+plot(m,ylim=c(-11,0),xlim=c(-11,0),main="Test stat")
+abline(1,1,col="red",lty=2,lwd=2)
+sig <- subset(m,Hf < -5 | Rfx < -5)
+points(sig,pch=19)
+text(sig$Rfx,sig$Hf-0.5,labels=rownames(sig),cex=0.7)
+
+sig
+
+```
+
 ## Multi-dimensional pathway enrichment
 
 This is a unique feature of mitch package that allows us to look at enrichment in two or more contrasts.
 
-First we look at Rfx.
+First look at NTC vs DsRed gRNA in both Rfx and HF.
+
+```{r,mitch0}
+
+m0 <- mitch_calc(m, go, priority="effect",cores=8)
+
+head(m0$enrichment_result,20) %>%
+  kbl(caption = "Top pathways for gRNA in Rfx & Hf") %>%
+  kable_paper("hover", full_width = F)
+
+top <- head(subset(m0$enrichment_result,p.adjustMANOVA<0.05),30)
+mycols <- grep("^s\\.",colnames(top))
+mycols <- mycols[1:length(mycols)-1]
+mx <- as.matrix(top[,mycols])
+rownames(mx) <- top$set
+
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+
+heatmap.2(mx,trace="none",col=colfunc(25),scale="none",
+    margins = c(7,25), cexRow=0.8, cexCol=0.8,
+    main="Top pathways for gRNA in Rfx & Hf" )
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
+
+plot(m0$enrichment_result$s.Rfx,m0$enrichment_result$s.Hf,
+  col=alpha("darkgray", 0.6), pch=19,
+  main="Enrichment score" , xlab="Rfx", ylab="Hf")
+
+sig <- subset(m0$enrichment_result,p.adjustMANOVA<0.05)
+
+points(sig$s.Rfx,sig$s.Hf, col="darkorange", pch=19 )
+
+abline(v=0,h=0,col="blue",lwd=2,lty=2)
+
+if ( ! file.exists("mitch0.html") ) {
+  mitch_report(res=m0,outfile="mitch0.html")
+}
+
+# SD=discordant
+m0 <- mitch_calc(m, go, priority="SD",cores=8)
+
+head(m0$enrichment_result,20) %>%
+  kbl(caption = "Discordant pathways for gRNA in Rfx & Hf") %>%
+  kable_paper("hover", full_width = F)
+
+top <- head(subset(m0$enrichment_result,p.adjustMANOVA<0.05),30)
+mycols <- grep("^s\\.",colnames(top))
+mycols <- mycols[1:length(mycols)-1]
+mx <- as.matrix(top[,mycols])
+rownames(mx) <- top$set
+
+colfunc <- colorRampPalette(c("blue", "white", "red"))
+
+heatmap.2(mx,trace="none",col=colfunc(25),scale="none",
+    margins = c(7,25), cexRow=0.8, cexCol=0.8,
+    main="Discordant pathways for gRNA in Rfx & Hf" )
+
+```
+
+
+Next look at Rfx.
 
 ```{r,mitch2d_Rfx}
 
