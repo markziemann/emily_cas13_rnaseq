@@ -802,7 +802,7 @@ m4 <- aggregate(stat ~ gene,dge4,mean)
 rownames(m4) <- m4$gene ; m4$gene <- NULL
 mres4 <- mitch_calc(m4, go, priority="effect",cores=8)
 
-head(mres4$enrichment_result,20) %>%1
+head(mres4$enrichment_result,20) %>%
   kbl(caption = "Top GO in Hf: NTC gRNA vs DsRed gRNA") %>%
   kable_paper("hover", full_width = F)
 
