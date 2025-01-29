@@ -326,6 +326,13 @@ dmean <- unlist(lapply(dat,mean))
 reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
 mtext(paste("Reduction:",reduction,"%"))
 
+pdf("dsred_hf_box.pdf",height=5,width=5)
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="DsRed expresssion (Hf)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+mtext(paste("Reduction:",reduction,"%"))
+dev.off()
+
 ## RFX
 ds <- dsred[grep("Rfx",names(dsred))]
 
@@ -345,6 +352,13 @@ beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
 dmean <- unlist(lapply(dat,mean))
 reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
 mtext(paste("Reduction:",reduction,"%"))
+
+pdf("dsred_rfx_box.pdf",height=5,width=5)
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="DsRed expresssion (Rfx)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+mtext(paste("Reduction:",reduction,"%"))
+dev.off()
 
 ```
 
@@ -370,6 +384,13 @@ dmean <- unlist(lapply(dat,mean))
 reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
 mtext(paste("Reduction:",reduction,"%"))
 
+pdf("gfp_hf_box.pdf",height=5,width=5)
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="Fbxw11-GFP expresssion (Hf)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+mtext(paste("Reduction:",reduction,"%"))
+dev.off()
+
 ## RFX
 ds <- fbox[grep("Rfx",names(fbox))]
 
@@ -389,6 +410,13 @@ beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
 dmean <- unlist(lapply(dat,mean))
 reduction <- as.character(signif(unname(1-dmean[2]/dmean[1]),3)*100)
 mtext(paste("Reduction:",reduction,"%"))
+
+pdf("gfp_rfx_box.pdf",height=5,width=5)
+boxplot(dat,ylab="Reads per million",ylim=c(0,MAX),
+  main="Fbxw11-GFP expresssion (Rfx)", col="white",frame=FALSE)
+beeswarm(dat,add=TRUE,col="red",cex=2,pch=19)
+mtext(paste("Reduction:",reduction,"%"))
+dev.off()
 
 ```
 
@@ -442,7 +470,34 @@ maplot <- function(de,contrast_name) {
   points(log10(de$baseMean[redrow]),de$log2FoldChange[redrow],pch=19, cex=0.9, col="red")
 }
 
+make_volcano2 <- function(de,name) {
+    de <- de[!is.na(de$padj),]
+    de <- de[grep("Fbxw11-GFP",rownames(de),invert=TRUE),]
+    de <- de[grep("DsRed",rownames(de),invert=TRUE),]
+    sigup <- subset(de,padj<0.05 & log2FoldChange > 0.5)
+    sigdn <- subset(de,padj<0.05 & log2FoldChange < -0.5)
+    N_UP <- nrow(sigup)
+    N_DN <- nrow(sigdn)
+    N_SIG <- N_UP + N_DN
+    DET=nrow(de)
+    HEADER=paste(DET, "genes detected,",  N_SIG,"@5%FDR")
+    plot(de$log2FoldChange,-log10(de$padj),cex=0.6,pch=19,col="darkgray",bty ="n",
+        main=name, xlab="log2 FC", ylab="-log10 FDR")
+    mtext(HEADER)
+    abline(v=0.5,lwd=1,lty=2)
+    abline(v=-0.5,lwd=1,lty=2)
+    abline(h=1.301,lwd=1,lty=2)
+    points(sigup$log2FoldChange,-log10(sigup$padj),cex=0.6,pch=19,col="darkorange")
+    points(sigdn$log2FoldChange,-log10(sigdn$padj),cex=0.6,pch=19,col="deepskyblue")
+    YPOS=max(-log10(de$padj[!is.na(de$padj)]))
+    XPOS_DN=min(de$log2FoldChange)/2
+    XPOS_UP=max(de$log2FoldChange)/2
+    text(x=XPOS_UP,y=YPOS,labels=N_UP)
+    text(x=XPOS_DN,y=YPOS,labels=N_DN)
+}
+
 make_volcano <- function(de,name) {
+    de <- de[!is.na(de$padj),]
     sig <- subset(de,padj<0.05)
     N_SIG=nrow(sig)
     N_UP=nrow(subset(sig,log2FoldChange>0))
@@ -452,7 +507,6 @@ make_volcano <- function(de,name) {
     plot(de$log2FoldChange,-log10(de$pval),cex=0.5,pch=19,col="darkgray",
         main=name, xlab="log2 FC", ylab="-log10 pval", xlim=c(-6,6))
     mtext(HEADER)
-    grid()
     points(sig$log2FoldChange,-log10(sig$pval),cex=0.5,pch=19,col="darkorange")
     gfprow <- grep("Fbxw11-GFP",rownames(de))
     points(de$log2FoldChange[gfprow], -log10(de$pval)[gfprow],pch=19, cex=0.9, col="darkgreen")
@@ -507,6 +561,11 @@ write.table(dge1,file="dge1.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge1,"Rfx: NTC gRNA vs DsRed gRNA")
 make_volcano(dge1,"Rfx: NTC gRNA vs DsRed gRNA")
+make_volcano2(dge1,"Rfx: NTC gRNA vs DsRed gRNA")
+pdf("dge1.pdf",height=5,width=5)
+make_volcano2(dge1,"Rfx: NTC gRNA vs DsRed gRNA")
+dev.off()
+
 make_heatmap(dge1,"Rfx: NTC gRNA vs DsRed gRNA",ss1,xx1,n=30)
 
 # pathway
@@ -540,7 +599,6 @@ if ( ! file.exists("mitch1.html") ) {
   mitch_report(res=mres1,outfile="mitch1.html")
 }
 
-
 o <- dge1[order(dge1$baseMean),]
 NBINS=20
 brks <- quantile(o$baseMean, probs = c(seq(0,1,1/NBINS) ) )
@@ -548,6 +606,7 @@ o$quant <- cut(o$baseMean, breaks = brks, labels = 1:NBINS, include.lowest = TRU
 z <- lapply(unique(o$quant) , function(i) { y <- subset(o,quant==i) ; y$log2FoldChange } )
 names(z) <- 1:NBINS
 XLAB=paste("Expression bin,",round(nrow(o)/NBINS),"genes each")
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
 boxplot(z,ylim=c(-0.5,0.5),xlab=XLAB,ylab="Fold change",
   main="Rfx: NTC gRNA vs DsRed gRNA")
 abline(h=0,col="red",lty=2,lwd=2)
@@ -588,6 +647,11 @@ write.table(dge2,file="dge2.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge2,"Rfx: Tfx ctl vs NTC gRNA")
 make_volcano(dge2,"Rfx: Tfx ctl vs NTC gRNA")
+make_volcano2(dge2,"Rfx: Tfx ctl vs NTC gRNA")
+pdf("dge2.pdf",height=5,width=5)
+make_volcano2(dge2,"Rfx: Tfx ctl vs NTC gRNA")
+dev.off()
+
 make_heatmap(dge2,"Rfx: Tfx ctl vs NTC gRNA",ss2,xx2,n=30)
 
 # pathway
@@ -656,6 +720,10 @@ write.table(dge3,file="dge3.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge3,"Rfx: NTfc ctl vs Tfx ctl")
 make_volcano(dge3,"Rfx: NTfc ctl vs Tfx ctl")
+make_volcano2(dge3,"Rfx: NTfc ctl vs Tfx ctl")
+pdf("dge3.pdf",height=5,width=5)
+make_volcano2(dge3,"Rfx: NTfc ctl vs Tfx ctl")
+dev.off()
 make_heatmap(dge3,"Rfx: NTfc ctl vs Tfx ctl",ss3,xx3,n=30)
 
 # pathway
@@ -722,6 +790,10 @@ write.table(dge4,file="dge4.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge4,"Hf: NTC gRNA vs DsRed gRNA")
 make_volcano(dge4,"Hf: NTC gRNA vs DsRed gRNA")
+make_volcano2(dge4,"Hf: NTC gRNA vs DsRed gRNA")
+pdf("dge4.pdf",height=5,width=5)
+make_volcano2(dge4,"Hf: NTC gRNA vs DsRed gRNA")
+dev.off()
 make_heatmap(dge4,"Hf: NTC gRNA vs DsRed gRNA",ss4,xx4,n=30)
 
 # pathway
@@ -730,7 +802,7 @@ m4 <- aggregate(stat ~ gene,dge4,mean)
 rownames(m4) <- m4$gene ; m4$gene <- NULL
 mres4 <- mitch_calc(m4, go, priority="effect",cores=8)
 
-head(mres4$enrichment_result,20) %>%
+head(mres4$enrichment_result,20) %>%1
   kbl(caption = "Top GO in Hf: NTC gRNA vs DsRed gRNA") %>%
   kable_paper("hover", full_width = F)
 
@@ -762,6 +834,7 @@ o$quant <- cut(o$baseMean, breaks = brks, labels = 1:NBINS, include.lowest = TRU
 z <- lapply(unique(o$quant) , function(i) { y <- subset(o,quant==i) ; y$log2FoldChange } )
 names(z) <- 1:NBINS
 XLAB=paste("Expression bin,",round(nrow(o)/NBINS),"genes each")
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
 boxplot(z,ylim=c(-0.5,0.5),xlab=XLAB,ylab="Fold change",
   main="Hf: NTC gRNA vs DsRed gRNA")
 abline(h=0,col="red",lty=2,lwd=2)
@@ -800,6 +873,12 @@ write.table(dge5,file="dge2.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge5,"Hf: Tfx ctl vs NTC gRNA")
 make_volcano(dge5,"Hf: Tfx ctl vs NTC gRNA")
+make_volcano2(dge5,"Hf: Tfx ctl vs NTC gRNA")
+pdf("dge5.pdf",height=5,width=5)
+make_volcano2(dge5,"Hf: Tfx ctl vs NTC gRNA")
+dev.off()
+
+
 make_heatmap(dge5,"Hf: Tfx ctl vs NTC gRNA",ss5,xx5,n=30)
 
 # pathway
@@ -866,6 +945,10 @@ write.table(dge6,file="dge6.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge6,"Hf: NTfc ctl vs Tfx ctl")
 make_volcano(dge6,"Hf: NTfc ctl vs Tfx ctl")
+make_volcano2(dge6,"Hf: NTfc ctl vs Tfx ctl")
+pdf("dge6.pdf",height=5,width=5)
+make_volcano2(dge6,"Hf: NTfc ctl vs Tfx ctl")
+dev.off()
 make_heatmap(dge6,"Hf: NTfc ctl vs Tfx ctl",ss6,xx6,n=30)
 
 # pathway
@@ -932,6 +1015,10 @@ write.table(dge7,file="dge7.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA")
 make_volcano(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA")
+make_volcano2(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA")
+pdf("dge7.pdf",width=5,height=5)
+make_volcano2(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA")
+dev.off()
 make_heatmap(dge7,"Rfx DsRed gRNA vs Hf DsRed gRNA",ss7,xx7,n=30)
 
 # pathway
@@ -998,6 +1085,11 @@ write.table(dge8,file="dge8.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge8,"Rfx NTC gRNA vs Hf NTC gRNA")
 make_volcano(dge8,"Rfx NTC gRNA vs Hf NTC gRNA")
+make_volcano2(dge8,"Rfx NTC gRNA vs Hf NTC gRNA")
+pdf("dge8.pdf",width=5,height=5)
+make_volcano2(dge8,"Rfx NTC gRNA vs Hf NTC gRNA")
+dev.off()
+
 make_heatmap(dge8,"Rfx NTC gRNA vs Hf NTC gRNA",ss8,xx8,n=30)
 
 # pathway
@@ -1064,6 +1156,11 @@ write.table(dge9,file="dge9.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge9,"Rfx Tfx ctl vs Hf Tfx ctl")
 make_volcano(dge9,"Rfx Tfx ctl vs Hf Tfx ctl")
+make_volcano2(dge9,"Rfx Tfx ctl vs Hf Tfx ctl")
+pdf("dge8.pdf",width=5,height=5)
+make_volcano2(dge9,"Rfx Tfx ctl vs Hf Tfx ctl")
+dev.off()
+
 make_heatmap(dge9,"Rfx Tfx ctl vs Hf Tfx ctl",ss9,xx9,n=30)
 
 # pathway
@@ -1130,6 +1227,10 @@ write.table(dge10,file="dge10.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge10,"Rfx NTfx ctl vs Hf NTfx ctl")
 make_volcano(dge10,"Rfx NTfx ctl vs Hf NTfx ctl")
+make_volcano2(dge10,"Rfx NTfx ctl vs Hf NTfx ctl")
+pdf("dge10.pdf",width=5,height=5)
+make_volcano2(dge10,"Rfx NTfx ctl vs Hf NTfx ctl")
+dev.off()
 make_heatmap(dge10,"Rfx NTfx ctl vs Hf NTfx ctl",ss10,xx10,n=30)
 
 # pathway
@@ -1200,6 +1301,10 @@ write.table(dge11,file="dge11.tsv",quote=FALSE,sep='\t')
 par(mar = c(5.1, 4.1, 4.1, 2.1) )
 maplot(dge11,"gRNA target * Rfx/HF interaction")
 make_volcano(dge11,"gRNA target * Rfx/HF interaction")
+make_volcano2(dge11,"gRNA target * Rfx/HF interaction")
+pdf("dge11.pdf",width=5,height=5)
+make_volcano2(dge11,"gRNA target * Rfx/HF interaction")
+dev.off()
 make_heatmap(dge11,"gRNA target * Rfx/HF interaction",ss11,xx11,n=20)
 
 # pathway
@@ -1361,6 +1466,59 @@ points(sig,pch=19)
 text(sig$Rfx,sig$Hf-0.5,labels=rownames(sig),cex=0.7)
 
 sig
+
+```
+
+## Pathway cross comparison
+
+Make a bubble plot of top HF pws (FDR), overlay Rfx.
+
+Then make a bubble plot of top Rfx pws (FDR), overlay HF.
+
+```{r,pwbubble1}
+
+mres1pw <- subset(mres1$enrichment_result, abs(s.dist) > 0.3 & p.adjustANOVA < 0.01)
+rowkeep <- c( grep("ribo",mres1pw$set)[1] , grep("ribo",mres1pw$set,invert=TRUE) )
+mres1pw <- mres1pw[rowkeep,]
+mres1pw <- mres1pw[order(mres1pw$pANOVA),]
+
+mres4pw <- mres4$enrichment_result[which(mres4$enrichment_result$set %in% mres1pw$set),]
+mres4pw <- mres4pw[match(mres1pw$set , mres4pw$set),]
+
+ml1 <- as.list(-log10(mres1pw$p.adjustANOVA))
+names(ml1) <- mres1pw$set
+
+ml4 <- as.list(-log10(mres4pw$p.adjustANOVA))
+names(ml4) <- mres4pw$set
+
+MIN=floor(min(unlist(c(ml1,ml4))))
+MAX=ceiling(max(unlist(c(ml1,ml4))))
+COLS <- gsub("0","deepskyblue",gsub("2","darkorange",as.character(sign(mres1pw$s.dist)+1)))
+
+par(mar = c(5.1, 20.1, 4.1, 2.1) )
+
+beeswarm(ml1,horiz=TRUE,las=1,xlab="-log10(FDR)",cex=3,pch=19,xlim=c(MIN,MAX),col=COLS)
+beeswarm(ml4,horiz=TRUE,cex=3,pch=1,add=TRUE,col=COLS)
+
+legend(15,4.5, inset=.1, title="Construct",
+   c("Rfx","HF"), pch=c(19,1), horiz=TRUE, cex=1.0)
+
+legend(15,3.5, inset=.1, title="Direction",
+   c("Up","Down"), col=c("deepskyblue","darkorange"), pch=15, horiz=TRUE, cex=1.0)
+
+pdf("pathwaybubbleplot.pdf",width=7,height=5)
+par(mar = c(5.1, 20.1, 4.1, 2.1) )
+beeswarm(ml1,horiz=TRUE,las=1,xlab="-log10(FDR)",cex=2,pch=19,xlim=c(MIN,MAX),col=COLS)
+beeswarm(ml4,horiz=TRUE,cex=2,pch=1,add=TRUE,col=COLS)
+
+legend(19,4.6, inset=.1, title="Construct",
+   c("Rfx","HF"), pch=c(19,1), horiz=FALSE, cex=1.0)
+
+legend(19,3.5, inset=.1, title="Direction",
+   c("Up","Down"), col=c("deepskyblue","darkorange"), pch=15, horiz=FALSE, cex=1.0)
+dev.off()
+
+par(mar = c(5.1, 4.1, 4.1, 2.1) )
 
 ```
 
